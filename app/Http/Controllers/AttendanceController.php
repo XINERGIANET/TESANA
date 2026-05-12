@@ -68,6 +68,19 @@ class AttendanceController extends Controller
                     $validator->errors()->add('client_id', 'El cliente ya realizó todas sus sesiones');
                 }
 
+                $activeAttendancesCount = Attendance::where('client_id', $client->id)->where('active', 1)->count();
+                $serviceSessions = $client->service ? $client->service->sessions : 0;
+
+                if ($activeAttendancesCount >= $serviceSessions && $serviceSessions > 0) {
+                    if (!$validator->errors()->has('client_id')) {
+                        $validator->errors()->add('client_id', 'El cliente ya alcanzó el límite de asistencias de su servicio (' . $serviceSessions . ')');
+                    }
+
+                    if ($client->sessions > 0) {
+                        $client->update(['sessions' => 0]);
+                    }
+                }
+
                 $attendances = Attendance::where('client_id', $client->id)->whereDate('date', $request->date)->get();
 
                 if ($attendances->count() > 0) {
