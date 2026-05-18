@@ -9,12 +9,13 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\AttendancesExport;
 use App\Models\Attendance;
 use App\Models\Client;
+use App\Models\ClientService;
 
 class AttendanceController extends Controller
 {
     public function index(Request $request)
     {
-        $attendances = Attendance::when(!$request->old, function ($query) {
+        $attendances = Attendance::with('client')->when(!$request->old, function ($query) {
             return $query->where('active', 1);
         })
             ->when($request->document, function ($query, $document) {
@@ -33,8 +34,14 @@ class AttendanceController extends Controller
             ->when($request->end_date, function ($query, $end_date) {
                 return $query->whereDate('date', '<=', $end_date);
             })
-            ->latest('date') // Ordenar por fecha más reciente primero
+            ->latest('date')
             ->paginate(20);
+
+        $attendances->getCollection()->transform(function ($attendance) {
+            $attendance->client_service = $this->resolveClientService($attendance);
+
+            return $attendance;
+        });
 
         return view('attendances.index', compact('attendances'));
     }
@@ -46,7 +53,6 @@ class AttendanceController extends Controller
 
     public function store(Request $request)
     {
-
         $validator = Validator::make($request->all(), [
             'client_id' => 'required',
             'date' => 'required|date'
@@ -65,7 +71,7 @@ class AttendanceController extends Controller
                 }
 
                 if ($client->sessions < 1) {
-                    $validator->errors()->add('client_id', 'El cliente ya realizó todas sus sesiones');
+                    $validator->errors()->add('client_id', 'El cliente ya realizo todas sus sesiones');
                 }
 
                 $activeAttendancesCount = Attendance::where('client_id', $client->id)->where('active', 1)->count();
@@ -73,7 +79,7 @@ class AttendanceController extends Controller
 
                 if ($activeAttendancesCount >= $serviceSessions && $serviceSessions > 0) {
                     if (!$validator->errors()->has('client_id')) {
-                        $validator->errors()->add('client_id', 'El cliente ya alcanzó el límite de asistencias de su servicio (' . $serviceSessions . ')');
+                        $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $serviceSessions . ')');
                     }
 
                     if ($client->sessions > 0) {
@@ -84,7 +90,7 @@ class AttendanceController extends Controller
                 $attendances = Attendance::where('client_id', $client->id)->whereDate('date', $request->date)->get();
 
                 if ($attendances->count() > 0) {
-                    $validator->errors()->add('client_id', 'Sólo se puede registrar 1 asistencia por cliente por día');
+                    $validator->errors()->add('client_id', 'Solo se puede registrar 1 asistencia por cliente por dia');
                 }
             }
         });
@@ -96,29 +102,82 @@ class AttendanceController extends Controller
             ]);
         }
 
-
-
         DB::transaction(function () use ($request, $client) {
-
             $date = $request->date . ' ' . now()->format('H:i');
-
             $exists = Attendance::where('client_id', $client->id)->where('date', $date)->first();
 
             if (!$exists) {
-
-                if ($client) {
-                    $client->update([
-                        'sessions' => intval($client->sessions) - 1
-                    ]);
-                }
-
                 Attendance::create([
                     'client_id' => $client->id,
                     'date' => $date
                 ]);
+
+                $this->syncClientAttendances($client);
             }
         });
 
+        return response()->json([
+            'status' => true
+        ]);
+    }
+
+    public function edit(Request $request, Attendance $attendance)
+    {
+        return response()->json([
+            'id' => $attendance->id,
+            'client_id' => $attendance->client_id,
+            'client' => optional($attendance->client)->name,
+            'date' => optional($attendance->date)->format('Y-m-d'),
+        ]);
+    }
+
+    public function update(Request $request, Attendance $attendance)
+    {
+        $validator = Validator::make($request->all(), [
+            'client_id' => 'required',
+            'date' => 'required|date'
+        ]);
+
+        $client = Client::find($request->client_id);
+
+        $validator->after(function ($validator) use ($request, $client, $attendance) {
+            if (!$client) {
+                $validator->errors()->add('client_id', 'El cliente no se encuentra registrado');
+                return;
+            }
+
+            $exists = Attendance::where('client_id', $client->id)
+                ->whereDate('date', $request->date)
+                ->where('id', '<>', $attendance->id)
+                ->exists();
+
+            if ($exists) {
+                $validator->errors()->add('client_id', 'Solo se puede registrar 1 asistencia por cliente por dia');
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'error' => $validator->errors()->first()
+            ]);
+        }
+
+        DB::transaction(function () use ($request, $attendance, $client) {
+            $previousClient = $attendance->client;
+            $time = optional($attendance->date)->format('H:i') ?: now()->format('H:i');
+
+            $attendance->update([
+                'client_id' => $client->id,
+                'date' => $request->date . ' ' . $time,
+            ]);
+
+            if ($previousClient) {
+                $this->syncClientAttendances($previousClient);
+            }
+
+            $this->syncClientAttendances($client);
+        });
 
         return response()->json([
             'status' => true
@@ -127,7 +186,13 @@ class AttendanceController extends Controller
 
     public function destroy(Request $request, Attendance $attendance)
     {
+        $client = $attendance->client;
+
         $attendance->delete();
+
+        if ($client) {
+            $this->syncClientAttendances($client);
+        }
 
         return response()->json([
             'status' => true
@@ -142,18 +207,104 @@ class AttendanceController extends Controller
         if ($client) {
             $attendances = Attendance::where('client_id', $client->id)
                 ->when(!$request->old, function ($query) {
-                    return $query->where('active', 1); // Solo asistencias activas si no se marca "Asistencias anteriores"
+                    return $query->where('active', 1);
                 })
-                ->latest('date') // Ordenar por fecha más reciente primero
+                ->latest('date')
                 ->paginate(20);
         }
 
         return view('attendances.search', compact('attendances'));
     }
 
-    
     public function excel(Request $request)
     {
         return Excel::download(new AttendancesExport, 'ReporteAsistencias.xlsx');
+    }
+
+    private function resolveClientService(Attendance $attendance)
+    {
+        if (!$attendance->client_id) {
+            return null;
+        }
+
+        $assignments = $this->buildServiceAssignments($attendance->client_id);
+
+        return $assignments[$attendance->id] ?? null;
+    }
+
+    private function syncClientAttendances(Client $client)
+    {
+        $assignments = $this->buildServiceAssignments($client->id);
+        $latestService = ClientService::with('service')
+            ->where('client_id', $client->id)
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$latestService) {
+            return;
+        }
+
+        $activeCount = 0;
+
+        foreach ($assignments as $attendanceId => $clientService) {
+            $isActive = $clientService && $clientService->id === $latestService->id;
+
+            Attendance::where('id', $attendanceId)->update(['active' => $isActive ? 1 : 0]);
+
+            if ($isActive) {
+                $activeCount++;
+            }
+        }
+
+        $serviceSessions = optional($latestService->service)->sessions ?? optional($client->service)->sessions ?? 0;
+
+        $client->update([
+            'sessions' => max(0, intval($serviceSessions) - $activeCount),
+        ]);
+    }
+
+    private function buildServiceAssignments($clientId)
+    {
+        $clientServices = ClientService::with('service')
+            ->where('client_id', $clientId)
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
+
+        if ($clientServices->isEmpty()) {
+            return [];
+        }
+
+        $attendances = Attendance::where('client_id', $clientId)
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get();
+
+        $assignments = [];
+        $serviceIndex = 0;
+        $usedSessions = [];
+
+        foreach ($attendances as $attendance) {
+            while ($serviceIndex < $clientServices->count()) {
+                $currentService = $clientServices[$serviceIndex];
+                $limit = intval(optional($currentService->service)->sessions ?: 0);
+
+                if ($limit < 1 || ($usedSessions[$currentService->id] ?? 0) < $limit) {
+                    break;
+                }
+
+                $serviceIndex++;
+            }
+
+            $assignedService = $clientServices[$serviceIndex] ?? $clientServices->last();
+            $assignments[$attendance->id] = $assignedService;
+
+            if ($assignedService) {
+                $usedSessions[$assignedService->id] = ($usedSessions[$assignedService->id] ?? 0) + 1;
+            }
+        }
+
+        return $assignments;
     }
 }
