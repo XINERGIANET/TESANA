@@ -2,6 +2,49 @@
 
 @section('title', 'Dashboard de resultados')
 
+@section('styles')
+<style>
+	.dashboard-card {
+		cursor: pointer;
+		transition: transform .15s ease, box-shadow .15s ease;
+	}
+
+	.dashboard-card:hover,
+	.dashboard-card:focus {
+		transform: translateY(-2px);
+		box-shadow: 0 .5rem 1.25rem rgba(15, 23, 42, .10);
+		outline: none;
+	}
+
+	.dashboard-summary-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: 1rem;
+	}
+
+	.dashboard-summary-item {
+		border: 1px solid #dce7f5;
+		border-radius: 12px;
+		padding: .85rem 1rem;
+		background: #f8fbff;
+	}
+
+	.dashboard-summary-label {
+		display: block;
+		font-size: .75rem;
+		text-transform: uppercase;
+		color: #6c7a91;
+		margin-bottom: .25rem;
+	}
+
+	.dashboard-summary-value {
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: #1f2a44;
+	}
+</style>
+@endsection
+
 @section('content')
 
 <div class="d-block d-lg-flex justify-content-between align-items-center">
@@ -55,7 +98,7 @@
 
 <div class="row">
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-primary-lt mb-4">
+		<div class="card bg-primary-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="clients" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">ALUMNOS</h5>
 				<span class="d-block fs-2 text-center">{{ $clients }}</span>
@@ -63,7 +106,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-primary-lt mb-4">
+		<div class="card bg-primary-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="incomes" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">INGRESOS</h5>
 				<span class="d-block fs-2 text-center">S/{{ number_format($totalIncomes, 2) }}</span>
@@ -71,7 +114,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-danger-lt mb-4">
+		<div class="card bg-danger-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="expenses" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">EGRESOS</h5>
 				<span class="d-block fs-2 text-center">S/{{ number_format($totalExpenses, 2) }}</span>
@@ -79,7 +122,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-success-lt mb-4">
+		<div class="card bg-success-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="rentability" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">% RENTABILIDAD</h5>
 				<span class="d-block fs-2 text-center">{{ ($totalExpenses == 0 || $totalIncomes == 0) ? 0 : number_format($totalExpenses / $totalIncomes, 2) }} %</span>
@@ -87,7 +130,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-dark-lt mb-4">
+		<div class="card bg-dark-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="cash" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">CAJA</h5>
 				<span class="d-block fs-2 text-center">S/{{ number_format($totalIncomes - $totalExpenses, 2) }}</span>
@@ -98,7 +141,7 @@
 
 <div class="row">
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-primary-lt mb-4">
+		<div class="card bg-primary-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="new_clients" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">A. NUEVOS</h5>
 				<span class="d-block fs-2 text-center">{{ $new_clients }}</span>
@@ -106,7 +149,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-primary-lt mb-4">
+		<div class="card bg-primary-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="recurrent_clients" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">A. RECURRENTES</h5>
 				<span class="d-block fs-2 text-center">{{ $recurrent_clients }}</span>
@@ -114,7 +157,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-warning-lt mb-4">
+		<div class="card bg-warning-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="sessions_1" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">1 SESIÓN</h5>
 				<span class="d-block fs-2 text-center">{{ $clients_1_session }} <br> S/{{ number_format($total_1_session, 2) }}</span>
@@ -122,7 +165,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-warning-lt mb-4">
+		<div class="card bg-warning-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="sessions_8" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">8 SESIONES</h5>
 				<span class="d-block fs-2 text-center">{{ $clients_8_sessions }} <br> S/{{ number_format($total_8_sessions, 2) }}</span>
@@ -130,7 +173,7 @@
 		</div>
 	</div>
 	<div class="col-xl-2 col-lg-3 col-md-4">
-		<div class="card bg-warning-lt mb-4">
+		<div class="card bg-warning-lt mb-4 dashboard-card js-dashboard-card" data-detail-key="sessions_12" tabindex="0" role="button">
 			<div class="card-body">
 				<h5 class="text-truncate">12 SESIONES</h5>
 				<span class="d-block fs-2 text-center">{{ $clients_12_sessions }} <br> S/{{ number_format($total_12_sessions, 2) }}</span>
@@ -157,6 +200,27 @@
 				<div>
 					<canvas id="chart2"></canvas>
 				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="modal modal-blur fade" id="dashboardDetailModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="dashboardDetailTitle">Detalle</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div id="dashboardDetailSummary" class="dashboard-summary-grid mb-4"></div>
+				<div class="table-responsive">
+					<table class="table table-vcenter table-striped" id="dashboardDetailTable">
+						<thead></thead>
+						<tbody></tbody>
+					</table>
+				</div>
+				<div id="dashboardDetailEmpty" class="text-muted"></div>
 			</div>
 		</div>
 	</div>
@@ -318,7 +382,7 @@
 @endsection
 
 @php
-$monthServiceSales = App\Models\ClientService::active()->select(DB::raw('MONTH(start_date) as month'), DB::raw('SUM(total) as total'))
+$monthServiceSales = App\Models\Client::active()->select(DB::raw('MONTH(start_date) as month'), DB::raw('SUM(total) as total'))
 	->whereYear('start_date', $year)
 	->groupBy('month')
 	->orderBy('month', 'asc')
@@ -397,6 +461,63 @@ foreach($costs as $cost){
 @section('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+	const dashboardDetails = @json($dashboardDetails, JSON_UNESCAPED_UNICODE);
+
+	function renderDashboardDetail(detail) {
+		const summaryContainer = $('#dashboardDetailSummary');
+		const tableHead = $('#dashboardDetailTable thead');
+		const tableBody = $('#dashboardDetailTable tbody');
+		const emptyMessage = $('#dashboardDetailEmpty');
+
+		$('#dashboardDetailTitle').text(detail.title || 'Detalle');
+		summaryContainer.empty();
+		tableHead.empty();
+		tableBody.empty();
+		emptyMessage.text('');
+
+		(detail.summary || []).forEach(function(item) {
+			summaryContainer.append(
+				'<div class="dashboard-summary-item">' +
+					'<span class="dashboard-summary-label">' + item.label + '</span>' +
+					'<span class="dashboard-summary-value">' + item.value + '</span>' +
+				'</div>'
+			);
+		});
+
+		if ((detail.headers || []).length > 0) {
+			let headRow = '<tr>';
+			detail.headers.forEach(function(header) {
+				headRow += '<th>' + header + '</th>';
+			});
+			headRow += '</tr>';
+			tableHead.html(headRow);
+		}
+
+		if ((detail.rows || []).length > 0) {
+			detail.rows.forEach(function(row) {
+				let bodyRow = '<tr>';
+				(detail.headers || []).forEach(function(header) {
+					bodyRow += '<td>' + (row[header] ?? '-') + '</td>';
+				});
+				bodyRow += '</tr>';
+				tableBody.append(bodyRow);
+			});
+			$('#dashboardDetailTable').show();
+		} else {
+			$('#dashboardDetailTable').hide();
+			emptyMessage.text(detail.empty || 'No hay información disponible.');
+		}
+	}
+
+	function openDashboardDetail(key) {
+		if (!dashboardDetails[key]) {
+			return;
+		}
+
+		renderDashboardDetail(dashboardDetails[key]);
+		const modal = new bootstrap.Modal(document.getElementById('dashboardDetailModal'));
+		modal.show();
+	}
 
 	$(document).ready(function(){
 		const ctx_chart1 = document.getElementById('chart1');
@@ -446,6 +567,18 @@ foreach($costs as $cost){
 				},
 				]
 			}
+		});
+
+		$('.js-dashboard-card').on('click keydown', function(event){
+			if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') {
+				return;
+			}
+
+			if (event.type === 'keydown') {
+				event.preventDefault();
+			}
+
+			openDashboardDetail($(this).data('detail-key'));
 		});
 	});
 
