@@ -145,6 +145,48 @@ class WebController extends Controller
             ];
         })->values()->all();
 
+        $cashRows = collect();
+
+        foreach($filteredClients as $client){
+            $cashRows->push([
+                'Tipo' => 'Ingreso',
+                'Origen' => 'Alumno',
+                'Detalle' => $client->name . ' - ' . (optional($client->service)->name ?? 'Servicio'),
+                'Fecha' => $formatDate($client->start_date),
+                'Monto' => $formatMoney($client->total),
+            ]);
+        }
+
+        foreach($filteredSales as $sale){
+            $cashRows->push([
+                'Tipo' => 'Ingreso',
+                'Origen' => 'Producto',
+                'Detalle' => optional($sale->product)->name ?? ('Venta #' . $sale->id),
+                'Fecha' => $formatDate($sale->date),
+                'Monto' => $formatMoney($sale->total),
+            ]);
+        }
+
+        foreach($filteredIncomes as $income){
+            $cashRows->push([
+                'Tipo' => 'Ingreso',
+                'Origen' => 'Ingreso adicional',
+                'Detalle' => $income->description ?: 'Sin descripción',
+                'Fecha' => $formatDate($income->date),
+                'Monto' => $formatMoney($income->amount),
+            ]);
+        }
+
+        foreach($filteredExpenses as $expense){
+            $cashRows->push([
+                'Tipo' => 'Egreso',
+                'Origen' => optional($expense->cost)->name ?? 'Sin categoría',
+                'Detalle' => $expense->description ?: 'Sin descripción',
+                'Fecha' => $formatDate($expense->date),
+                'Monto' => $formatMoney($expense->amount),
+            ]);
+        }
+
         $rentability = ($totalExpenses == 0 || $totalIncomes == 0) ? 0 : number_format($totalExpenses / $totalIncomes, 2);
 
         $dashboardDetails = [
@@ -199,12 +241,8 @@ class WebController extends Controller
                     ['label' => 'Egresos', 'value' => $formatMoney($totalExpenses)],
                     ['label' => 'Caja', 'value' => $formatMoney($totalIncomes - $totalExpenses)],
                 ],
-                'headers' => ['Concepto', 'Monto'],
-                'rows' => [
-                    ['Concepto' => 'Total ingresos', 'Monto' => $formatMoney($totalIncomes)],
-                    ['Concepto' => 'Total egresos', 'Monto' => $formatMoney($totalExpenses)],
-                    ['Concepto' => 'Caja final', 'Monto' => $formatMoney($totalIncomes - $totalExpenses)],
-                ],
+                'headers' => ['Tipo', 'Origen', 'Detalle', 'Fecha', 'Monto'],
+                'rows' => $cashRows->values()->all(),
                 'empty' => 'No hay movimientos para el filtro seleccionado.',
             ],
             'new_clients' => [
