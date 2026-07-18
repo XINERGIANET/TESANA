@@ -15,6 +15,7 @@ use App\Models\ClientData;
 use App\Models\Service;
 use App\Models\PaymentMethod;
 use App\Models\Attendance;
+use App\Support\ClientAttendances;
 
 class ClientController extends Controller
 {
@@ -264,21 +265,17 @@ class ClientController extends Controller
             ->pluck('c.client_id');
         
         // Consulta con validación de total_sessions y total_attendances
-        $clients = Client::whereIn('id', $clientsWithService)
+        $clients = Client::active()
+            ->whereIn('id', $clientsWithService)
             ->where(function($q) use ($request){
                 $q->where('name', 'like', "%{$request->q}%")
                   ->orWhere('document', 'like', "%{$request->q}%");
             })
-            ->whereNotIn('id', function($query) {
-                $query->select('cs.client_id')
-                    ->from('client_services as cs')
-                    ->join('services as s', 'cs.service_id', '=', 's.id')
-                    ->join('attendances as a', 'a.client_id', '=', 'cs.client_id')
-                    ->select('cs.client_id')
-                    ->groupBy('cs.client_id')
-                    ->havingRaw('SUM(s.sessions) <= COUNT(a.id)');  // Filtra clientes donde total_sessions <= total_attendances
+            ->get()
+            ->filter(function ($client) {
+                return ClientAttendances::hasAvailableSession($client);
             })
-            ->get();
+            ->values();
     
         return response()->json([
             'items' => $clients
@@ -338,6 +335,7 @@ class ClientController extends Controller
                 ]);
 
                 Attendance::where('client_id', $client->id)->update(['active' => 0]);
+                ClientAttendances::sync($client);
 
             }
 

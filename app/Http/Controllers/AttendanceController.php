@@ -9,7 +9,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\AttendancesExport;
 use App\Models\Attendance;
 use App\Models\Client;
-use App\Models\ClientService;
+use App\Support\ClientAttendances;
 
 class AttendanceController extends Controller
 {
@@ -38,7 +38,7 @@ class AttendanceController extends Controller
             ->paginate(20);
 
         $attendances->getCollection()->transform(function ($attendance) {
-            $attendance->client_service = $this->resolveClientService($attendance);
+            $attendance->client_service = ClientAttendances::resolveService($attendance);
 
             return $attendance;
         });
@@ -66,20 +66,21 @@ class AttendanceController extends Controller
             }
 
             if ($client) {
+                ClientAttendances::sync($client);
+
                 if (strtotime($client->end_date) < strtotime($request->date)) {
                     $validator->errors()->add('client_id', 'El cliente ingresado no tiene un servicio activo');
                 }
 
-                if ($client->sessions < 1) {
-                    $validator->errors()->add('client_id', 'El cliente ya realizo todas sus sesiones');
+                $usage = ClientAttendances::currentUsage($client);
+
+                if ($usage['limit'] < 1) {
+                    $validator->errors()->add('client_id', 'El cliente ingresado no tiene un servicio con sesiones configuradas');
                 }
 
-                $activeAttendancesCount = Attendance::where('client_id', $client->id)->where('active', 1)->count();
-                $serviceSessions = $client->service ? $client->service->sessions : 0;
-
-                if ($activeAttendancesCount >= $serviceSessions && $serviceSessions > 0) {
+                if ($usage['limit'] > 0 && $usage['remaining'] < 1) {
                     if (!$validator->errors()->has('client_id')) {
-                        $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $serviceSessions . ')');
+                        $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $usage['limit'] . ')');
                     }
 
                     if ($client->sessions > 0) {
@@ -109,10 +110,11 @@ class AttendanceController extends Controller
             if (!$exists) {
                 Attendance::create([
                     'client_id' => $client->id,
-                    'date' => $date
+                    'date' => $date,
+                    'active' => 1
                 ]);
 
-                $this->syncClientAttendances($client);
+                ClientAttendances::sync($client);
             }
         });
 
@@ -154,6 +156,11 @@ class AttendanceController extends Controller
             if ($exists) {
                 $validator->errors()->add('client_id', 'Solo se puede registrar 1 asistencia por cliente por dia');
             }
+
+            if ($attendance->client_id != $client->id && !ClientAttendances::hasAvailableSession($client)) {
+                $usage = ClientAttendances::currentUsage($client);
+                $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $usage['limit'] . ')');
+            }
         });
 
         if ($validator->fails()) {
@@ -173,10 +180,10 @@ class AttendanceController extends Controller
             ]);
 
             if ($previousClient) {
-                $this->syncClientAttendances($previousClient);
+                ClientAttendances::sync($previousClient);
             }
 
-            $this->syncClientAttendances($client);
+            ClientAttendances::sync($client);
         });
 
         return response()->json([
@@ -191,7 +198,7 @@ class AttendanceController extends Controller
         $attendance->delete();
 
         if ($client) {
-            $this->syncClientAttendances($client);
+            ClientAttendances::sync($client);
         }
 
         return response()->json([
@@ -221,90 +228,4 @@ class AttendanceController extends Controller
         return Excel::download(new AttendancesExport, 'ReporteAsistencias.xlsx');
     }
 
-    private function resolveClientService(Attendance $attendance)
-    {
-        if (!$attendance->client_id) {
-            return null;
-        }
-
-        $assignments = $this->buildServiceAssignments($attendance->client_id);
-
-        return $assignments[$attendance->id] ?? null;
-    }
-
-    private function syncClientAttendances(Client $client)
-    {
-        $assignments = $this->buildServiceAssignments($client->id);
-        $latestService = ClientService::with('service')
-            ->where('client_id', $client->id)
-            ->orderByDesc('start_date')
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$latestService) {
-            return;
-        }
-
-        $activeCount = 0;
-
-        foreach ($assignments as $attendanceId => $clientService) {
-            $isActive = $clientService && $clientService->id === $latestService->id;
-
-            Attendance::where('id', $attendanceId)->update(['active' => $isActive ? 1 : 0]);
-
-            if ($isActive) {
-                $activeCount++;
-            }
-        }
-
-        $serviceSessions = optional($latestService->service)->sessions ?? optional($client->service)->sessions ?? 0;
-
-        $client->update([
-            'sessions' => max(0, intval($serviceSessions) - $activeCount),
-        ]);
-    }
-
-    private function buildServiceAssignments($clientId)
-    {
-        $clientServices = ClientService::with('service')
-            ->where('client_id', $clientId)
-            ->orderBy('start_date')
-            ->orderBy('id')
-            ->get();
-
-        if ($clientServices->isEmpty()) {
-            return [];
-        }
-
-        $attendances = Attendance::where('client_id', $clientId)
-            ->orderBy('date')
-            ->orderBy('id')
-            ->get();
-
-        $assignments = [];
-        $serviceIndex = 0;
-        $usedSessions = [];
-
-        foreach ($attendances as $attendance) {
-            while ($serviceIndex < $clientServices->count()) {
-                $currentService = $clientServices[$serviceIndex];
-                $limit = intval(optional($currentService->service)->sessions ?: 0);
-
-                if ($limit < 1 || ($usedSessions[$currentService->id] ?? 0) < $limit) {
-                    break;
-                }
-
-                $serviceIndex++;
-            }
-
-            $assignedService = $clientServices[$serviceIndex] ?? $clientServices->last();
-            $assignments[$attendance->id] = $assignedService;
-
-            if ($assignedService) {
-                $usedSessions[$assignedService->id] = ($usedSessions[$assignedService->id] ?? 0) + 1;
-            }
-        }
-
-        return $assignments;
-    }
 }
