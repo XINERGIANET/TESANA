@@ -460,7 +460,7 @@
 </div>
 
 <div class="modal modal-blur fade" id="servicesModal" tabindex="-1" role="dialog" aria-hidden="true">
-	<div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+	<div class="modal-dialog modal-dialog-centered modal-xl" role="document">
 		<div class="modal-content">
 			<div class="modal-header">
 				<h5 class="modal-title">Historial</h5>
@@ -468,7 +468,7 @@
 			</div>
 			<div class="modal-body">
 				<div class="table-responsive">
-					<table class="table table-bordered">
+					<table class="table table-bordered table-vcenter">
 						<thead>
 							<tr>
 								<th>Servicio</th>
@@ -476,11 +476,44 @@
 								<th>Fecha inicial</th>
 								<th>Fecha final</th>
 								<th>Fecha pago</th>
+								<th>Asistencias</th>
+								<th>Acción</th>
 							</tr>
 						</thead>
 						<tbody id="tbl-services"></tbody>
 					</table>
 				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="modal modal-blur fade" id="packageAttendancesModal" tabindex="-1" role="dialog" aria-hidden="true">
+	<div class="modal-dialog modal-dialog-centered" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="packageAttendancesTitle">Asistencias del servicio</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div class="d-flex justify-content-between align-items-center mb-3">
+					<span class="text-muted" id="packageAttendancesPeriod"></span>
+					<span class="badge bg-primary fs-6" id="packageAttendancesBadge"></span>
+				</div>
+				<div class="table-responsive" style="max-height: 400px;">
+					<table class="table table-bordered table-striped table-vcenter">
+						<thead>
+							<tr>
+								<th style="width: 50px;">#</th>
+								<th>Fecha y Hora</th>
+							</tr>
+						</thead>
+						<tbody id="tbl-package-attendances"></tbody>
+					</table>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn me-auto" data-bs-dismiss="modal"><i class="ti ti-x icon"></i> Cerrar</button>
 			</div>
 		</div>
 	</div>
@@ -850,18 +883,28 @@
 				var html = '';
 
 				data.forEach(function(client_service){
+					var used = client_service.used ?? 0;
+					var limit = client_service.limit ? client_service.limit : '∞';
+					var badgeClass = (client_service.limit && used >= client_service.limit) ? 'bg-danger-lt' : 'bg-blue-lt';
+
 					html += `
 						<tr>
-							<td>${client_service.service}</td>
-							<td>${client_service.total}</td>
+							<td><strong>${client_service.service}</strong></td>
+							<td>S/ ${client_service.total}</td>
 							<td>${client_service.start_date}</td>
 							<td>${client_service.end_date}</td>
 							<td>${client_service.payment_date ?? ''}</td>
+							<td>
+								<span class="badge ${badgeClass} text-uppercase">${used} / ${limit}</span>
+							</td>
+							<td>
+								<button type="button" class="btn btn-sm btn-primary btn-package-attendances" data-id="${client_service.id}">
+									<i class="ti ti-calendar icon"></i> Ver asistencias
+								</button>
+							</td>
 						</tr>
 					`;
 				});
-
-				console.log(html);
 
 				$('#tbl-services').html(html);
 
@@ -872,7 +915,40 @@
 			}
 		});
 
+	});
 
+	$(document).on('click', '.btn-package-attendances', function(){
+		var serviceId = $(this).data('id');
+		$('#tbl-package-attendances').html('<tr><td colspan="2" class="text-center">Cargando asistencias...</td></tr>');
+		$('#packageAttendancesModal').modal('show');
+
+		$.ajax({
+			url: '{{ url('client_services') }}/' + serviceId + '/attendances',
+			method: 'GET',
+			success: function(data){
+				$('#packageAttendancesTitle').text('Asistencias: ' + data.service_name);
+				$('#packageAttendancesPeriod').text('Periodo: ' + data.start_date + ' al ' + data.end_date);
+				$('#packageAttendancesBadge').text(data.used + ' de ' + (data.limit || '∞') + ' clases');
+
+				var html = '';
+				if(data.attendances && data.attendances.length > 0){
+					data.attendances.forEach(function(att){
+						html += `
+							<tr>
+								<td><strong>${att.number}</strong></td>
+								<td><i class="ti ti-clock me-1 text-muted"></i> ${att.date}</td>
+							</tr>
+						`;
+					});
+				}else{
+					html = '<tr><td colspan="2" class="text-center text-muted">No se registran asistencias para este paquete.</td></tr>';
+				}
+				$('#tbl-package-attendances').html(html);
+			},
+			error: function(){
+				$('#tbl-package-attendances').html('<tr><td colspan="2" class="text-center text-danger">Ocurrió un error al cargar las asistencias.</td></tr>');
+			}
+		});
 	});
 
 	$(document).on('click', '.btn-data', function(){
