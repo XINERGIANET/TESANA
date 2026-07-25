@@ -31,12 +31,14 @@ class ClientAttendances
         }
 
         $limit = intval(optional($latestService->service)->sessions ?: 0);
-        $used = Attendance::where('client_id', $client->id)
-            ->where('active', 1)
-            ->when($excludeAttendanceId, function ($query) use ($excludeAttendanceId) {
-                return $query->where('id', '<>', $excludeAttendanceId);
-            })
-            ->count();
+
+        $assignments = self::buildAssignments($client->id, $excludeAttendanceId);
+        $used = 0;
+        foreach ($assignments as $attendanceId => $assignedService) {
+            if ($assignedService && $assignedService->id == $latestService->id) {
+                $used++;
+            }
+        }
 
         return [
             'service' => $latestService,
@@ -62,34 +64,22 @@ class ClientAttendances
             return;
         }
 
-        $serviceSessions = intval(optional($latestService->service)->sessions ?: optional($client->service)->sessions ?: 0);
-        $activeAttendances = Attendance::where('client_id', $client->id)
-            ->where('active', 1)
-            ->orderBy('date')
-            ->orderBy('id')
-            ->get();
-
-        foreach ($activeAttendances as $index => $attendance) {
-            if ($serviceSessions < 1 || $index >= $serviceSessions) {
-                $attendance->update(['active' => 0]);
-            }
-        }
-
-        $activeCount = min($activeAttendances->count(), $serviceSessions);
-
+        $usage = self::currentUsage($client);
         $client->update([
-            'sessions' => max(0, $serviceSessions - $activeCount),
+            'sessions' => $usage['remaining'],
         ]);
+
+        $assignments = self::buildAssignments($client->id);
+        foreach ($assignments as $attendanceId => $assignedService) {
+            $isActive = ($assignedService && $assignedService->id == $latestService->id) ? 1 : 0;
+            Attendance::where('id', $attendanceId)->update(['active' => $isActive]);
+        }
     }
 
     public static function resolveService(Attendance $attendance)
     {
         if (!$attendance->client_id) {
             return null;
-        }
-
-        if ($attendance->active) {
-            return optional($attendance->client) ? self::latestService($attendance->client) : null;
         }
 
         $assignments = self::buildAssignments($attendance->client_id);
@@ -122,10 +112,20 @@ class ClientAttendances
 
         foreach ($attendances as $attendance) {
             $assignedService = null;
+            $attendanceDate = optional($attendance->date)->format('Y-m-d');
 
             while ($serviceIndex < $clientServices->count()) {
                 $currentService = $clientServices[$serviceIndex];
                 $limit = intval(optional($currentService->service)->sessions ?: 0);
+
+                if ($serviceIndex + 1 < $clientServices->count()) {
+                    $nextService = $clientServices[$serviceIndex + 1];
+                    $nextStartDate = optional($nextService->start_date)->format('Y-m-d');
+                    if ($nextStartDate && $attendanceDate && $attendanceDate >= $nextStartDate) {
+                        $serviceIndex++;
+                        continue;
+                    }
+                }
 
                 if ($limit > 0 && ($usedSessions[$currentService->id] ?? 0) < $limit) {
                     $assignedService = $currentService;
@@ -145,3 +145,4 @@ class ClientAttendances
         return $assignments;
     }
 }
+

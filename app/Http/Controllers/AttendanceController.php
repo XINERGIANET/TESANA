@@ -79,9 +79,7 @@ class AttendanceController extends Controller
                 }
 
                 if ($usage['limit'] > 0 && $usage['remaining'] < 1) {
-                    if (!$validator->errors()->has('client_id')) {
-                        $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $usage['limit'] . ')');
-                    }
+                    $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $usage['limit'] . ')');
 
                     if ($client->sessions > 0) {
                         $client->update(['sessions' => 0]);
@@ -157,8 +155,8 @@ class AttendanceController extends Controller
                 $validator->errors()->add('client_id', 'Solo se puede registrar 1 asistencia por cliente por dia');
             }
 
-            if ($attendance->client_id != $client->id && !ClientAttendances::hasAvailableSession($client)) {
-                $usage = ClientAttendances::currentUsage($client);
+            if (!ClientAttendances::hasAvailableSession($client, $attendance->id)) {
+                $usage = ClientAttendances::currentUsage($client, $attendance->id);
                 $validator->errors()->add('client_id', 'El cliente ya alcanzo el limite de asistencias de su servicio (' . $usage['limit'] . ')');
             }
         });

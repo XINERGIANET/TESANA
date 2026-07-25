@@ -102,8 +102,7 @@ class ClientController extends Controller
 
         return view('clients.sessions', compact('clients'));
     }
-
-    public function sessionsExcel(Request $request){
+    public function sessionsExcel(Request $request){
        return Excel::download(new SessionsExport, 'SesionesPendientes.xlsx');
     }
 
@@ -172,6 +171,8 @@ class ClientController extends Controller
             'observation' => $request->observation
         ]);
 
+        ClientAttendances::sync($client);
+
         return response()->json([
             'status' => true
         ]);
@@ -218,8 +219,7 @@ class ClientController extends Controller
 
         $service = Service::find($request->service_id);
 
-        
-        if($service->sessions > $client->service->sessions){
+        if($service->sessions > optional($client->service)->sessions){
             $sessions = $client->sessions + ($service->sessions - $client->service->sessions);
         }else{
             $sessions = $client->sessions;
@@ -240,6 +240,8 @@ class ClientController extends Controller
             'total' => $service->price,
             'sessions' => $sessions,
         ]);
+
+        ClientAttendances::sync($client);
 
         return response()->json([
             'status' => true
@@ -276,15 +278,11 @@ class ClientController extends Controller
                 return ClientAttendances::hasAvailableSession($client);
             })
             ->values();
-    
+
         return response()->json([
             'items' => $clients
         ]);
     }
-
-
-
-
 
     public function renew(Request $request, Client $client){
         $validator = Validator::make($request->all(), [
