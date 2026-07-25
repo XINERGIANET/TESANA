@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function(){
 	Route::get('clients/api', [ClientController::class, 'api'])->name('clients.api');
 	Route::post('clients/{client}/renew', [ClientController::class, 'renew'])->name('clients.renew');
 	Route::get('clients/{client}/services', [ClientController::class, 'services'])->name('clients.services');
+	Route::get('client_services/{client_service}/attendances', [ClientController::class, 'serviceAttendances'])->name('client_services.attendances');
 	Route::get('clients/{client}/data', [ClientController::class, 'data'])->name('clients.data');
 	Route::post('clients/{client}/data', [ClientController::class, 'storeData'])->name('clients.storeData');
 	Route::delete('clients/{client}/data', [ClientController::class, 'destroyData'])->name('clients.destroyData');

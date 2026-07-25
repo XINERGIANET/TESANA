@@ -339,26 +339,82 @@ class ClientController extends Controller
 
         });
 
-        
-
         return response()->json([
             'status' => true
         ]);
     }
 
     public function services(Request $request, Client $client){
-        $services = ClientService::with('service')->where('client_id', $client->id)->orderBy('start_date')->get();
-        $services = $services->map(function($client_service){
+        $clientServices = ClientService::with('service')->where('client_id', $client->id)->orderBy('start_date')->get();
+        $assignments = ClientAttendances::buildAssignments($client->id);
+
+        $services = $clientServices->map(function($client_service) use ($assignments){
+            $usedCount = 0;
+            foreach ($assignments as $attId => $assignedService) {
+                if ($assignedService && $assignedService->id == $client_service->id) {
+                    $usedCount++;
+                }
+            }
+            $limit = intval(optional($client_service->service)->sessions ?: 0);
+
             return [
+                'id' => $client_service->id,
                 'service' => optional($client_service->service)->name,
                 'total' => $client_service->total,
                 'start_date' => optional($client_service->start_date)->format('d/m/Y'),
                 'end_date' => optional($client_service->end_date)->format('d/m/Y'),
                 'payment_date' => optional($client_service->payment_date)->format('d/m/Y'),
-
+                'used' => $usedCount,
+                'limit' => $limit,
             ];
         });
         return response()->json($services);
+    }
+
+    public function serviceAttendances(Request $request, ClientService $client_service)
+    {
+        $client = $client_service->client;
+        if (!$client) {
+            return response()->json([
+                'service_name' => optional($client_service->service)->name ?: 'Servicio',
+                'start_date' => optional($client_service->start_date)->format('d/m/Y'),
+                'end_date' => optional($client_service->end_date)->format('d/m/Y'),
+                'limit' => intval(optional($client_service->service)->sessions ?: 0),
+                'used' => 0,
+                'attendances' => []
+            ]);
+        }
+
+        $assignments = ClientAttendances::buildAssignments($client->id);
+
+        $attendanceIds = [];
+        foreach ($assignments as $attId => $assignedService) {
+            if ($assignedService && $assignedService->id == $client_service->id) {
+                $attendanceIds[] = $attId;
+            }
+        }
+
+        $attendances = Attendance::whereIn('id', $attendanceIds)
+            ->orderBy('date')
+            ->get();
+
+        $limit = intval(optional($client_service->service)->sessions ?: 0);
+
+        $items = $attendances->values()->map(function ($att, $index) {
+            return [
+                'number' => $index + 1,
+                'date' => optional($att->date)->format('d/m/Y H:i'),
+            ];
+        });
+
+        return response()->json([
+            'service_name' => optional($client_service->service)->name ?: 'Servicio',
+            'start_date' => optional($client_service->start_date)->format('d/m/Y'),
+            'end_date' => optional($client_service->end_date)->format('d/m/Y'),
+            'limit' => $limit,
+            'used' => $items->count(),
+            'attendances' => $items
+        ]);
     }
 
     public function excel(Request $request){
@@ -417,7 +473,6 @@ class ClientController extends Controller
 
         $validator = Validator::make($request->all(), [
             'calculo' => 'required',
-            'triceps' => 'nullable|numeric',
             'subescapular' => 'nullable|numeric',
             'suprailiaco' => 'nullable|numeric',
             'abdominal' => 'nullable|numeric',
